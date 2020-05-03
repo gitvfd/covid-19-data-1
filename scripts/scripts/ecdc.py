@@ -3,13 +3,14 @@ import sys
 import pandas as pd
 from datetime import datetime, timedelta
 from termcolor import colored
-import megafile
 
 CURRENT_DIR = os.path.dirname(__file__)
-
 sys.path.append(CURRENT_DIR)
 
-from shared import load_population, load_owid_continents, inject_total_daily_cols, inject_owid_aggregates, inject_per_million, inject_days_since_all, inject_cfr, inject_population, inject_rolling_avg, standard_export
+import megafile
+from shared import load_population, load_owid_continents, inject_total_daily_cols, \
+    inject_owid_aggregates, inject_per_million, inject_days_since, inject_cfr, inject_population, \
+    inject_rolling_avg, inject_exemplars, inject_growth_rates, standard_export
 
 INPUT_PATH = os.path.join(CURRENT_DIR, '../input/ecdc/')
 OUTPUT_PATH = os.path.join(CURRENT_DIR, '../../public/data/ecdc/')
@@ -20,10 +21,6 @@ RELEASES_PATH = os.path.join(INPUT_PATH, 'releases')
 
 ERROR = colored("[Error]", 'red')
 WARNING = colored("[Warning]", 'yellow')
-
-DISCARD_ROWS = [
-    # e.g. ('France', '2020-04-04'),
-]
 
 # Used to be there until 27 March 2020
 # And back again from 28 March... :?
@@ -127,7 +124,8 @@ def check_data_correctness(filename):
     return True if errors == 0 else False
 
 def discard_rows(df):
-    return df[~df[['location','date']].applymap(str).apply(tuple, 1).isin(DISCARD_ROWS)]
+    # df.loc[(df['location'] == 'Spain') & (df['new_cases'] < 0), 'new_cases'] = pd.NA
+    return df
 
 # Must output columns:
 # date, location, new_cases, new_deaths, total_cases, total_deaths
@@ -143,9 +141,10 @@ def load_standardized(filename):
             'deaths': 'new_deaths'
         })
     df = df[['date', 'location', 'new_cases', 'new_deaths']]
-    df = discard_rows(df)
     df = inject_owid_aggregates(df)
+    df = discard_rows(df)
     df = inject_total_daily_cols(df, ['cases', 'deaths'])
+    df = inject_growth_rates(df)
     df = inject_per_million(df, [
         'new_cases',
         'new_deaths',
@@ -154,7 +153,8 @@ def load_standardized(filename):
     ])
     df = inject_cfr(df)
     df = inject_rolling_avg(df)
-    df = inject_days_since_all(df)
+    df = inject_days_since(df)
+    df = inject_exemplars(df)
     return df.sort_values(by=['location', 'date'])
 
 def export(filename):

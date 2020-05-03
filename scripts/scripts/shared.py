@@ -1,8 +1,14 @@
+import sys
 import pandas as pd
+import numpy as np
 import os
 from datetime import datetime
 
 CURRENT_DIR = os.path.dirname(__file__)
+sys.path.append(CURRENT_DIR)
+
+import megafile
+
 POPULATION_CSV_PATH = os.path.join(CURRENT_DIR, '../input/un/population_2020.csv')
 CONTINENTS_CSV_PATH = os.path.join(CURRENT_DIR, '../input/owid/continents.csv')
 WB_INCOME_GROUPS_CSV_PATH = os.path.join(CURRENT_DIR, '../input/owid/wb_income_groups.csv')
@@ -74,12 +80,16 @@ def inject_population(df):
         on='location'
     )
 
+def drop_population(df):
+    return df.drop(columns=['population_year', 'population'])
+
 def inject_per_million(df, measures):
     df = inject_population(df)
     for measure in measures:
         pop_measure = measure + '_per_million'
-        df[pop_measure] = df[measure] / (df['population'] / 1e6)
-    return df.drop(columns=['population_year', 'population'])
+        series = df[measure] / (df['population'] / 1e6)
+        df[pop_measure] = series.round(decimals=3)
+    return drop_population(df)
 
 # OWID continents + custom aggregates
 
@@ -157,101 +167,124 @@ def inject_total_daily_cols(df, measures):
 
 days_since_spec = {
     'days_since_100_total_cases': {
-        'col': 'total_cases',
-        'threshold': 100
+        'value_col': 'total_cases',
+        'value_threshold': 100,
+        'positive_only': False
     },
     'days_since_5_total_deaths': {
-        'col': 'total_deaths',
-        'threshold': 5
+        'value_col': 'total_deaths',
+        'value_threshold': 5,
+        'positive_only': False
     },
     'days_since_1_total_cases_per_million': {
-        'col': 'total_cases_per_million',
-        'threshold': 1
+        'value_col': 'total_cases_per_million',
+        'value_threshold': 1,
+        'positive_only': False
     },
     'days_since_0_1_total_deaths_per_million': {
-        'col': 'total_deaths_per_million',
-        'threshold': 0.1
+        'value_col': 'total_deaths_per_million',
+        'value_threshold': 0.1,
+        'positive_only': False
     },
     'days_since_30_new_cases': {
-        'col': 'new_cases',
-        'threshold': 30
+        'value_col': 'new_cases',
+        'value_threshold': 30,
+        'positive_only': False
     },
     'days_since_50_new_cases': {
-        'col': 'new_cases',
-        'threshold': 50
+        'value_col': 'new_cases',
+        'value_threshold': 50,
+        'positive_only': False
     },
     'days_since_30_new_cases_7_day_avg': {
-        'col': 'new_cases_7_day_avg',
-        'threshold': 30
+        'value_col': 'new_cases_7_day_avg',
+        'value_threshold': 30,
+        'positive_only': False
     },
     'days_since_10_new_deaths': {
-        'col': 'new_deaths',
-        'threshold': 10
+        'value_col': 'new_deaths',
+        'value_threshold': 10,
+        'positive_only': False
     },
     'days_since_5_new_deaths': {
-        'col': 'new_deaths',
-        'threshold': 5
+        'value_col': 'new_deaths',
+        'value_threshold': 5,
+        'positive_only': False
     },
     'days_since_3_new_deaths': {
-        'col': 'new_deaths',
-        'threshold': 3
+        'value_col': 'new_deaths',
+        'value_threshold': 3,
+        'positive_only': False
     },
     'days_since_5_new_deaths_7_day_avg': {
-        'col': 'new_deaths_7_day_avg',
-        'threshold': 5
+        'value_col': 'new_deaths_7_day_avg',
+        'value_threshold': 5,
+        'positive_only': False
     },
     'days_since_30_new_cases_7_day_avg_right': {
-        'col': 'new_cases_7_day_avg_right',
-        'threshold': 30
+        'value_col': 'new_cases_7_day_avg_right',
+        'value_threshold': 30,
+        'positive_only': False
     },
     'days_since_5_new_deaths_7_day_avg_right': {
-        'col': 'new_deaths_7_day_avg_right',
-        'threshold': 5
+        'value_col': 'new_deaths_7_day_avg_right',
+        'value_threshold': 5,
+        'positive_only': False
     },
     'days_since_1_new_cases_per_million_7_day_avg_right': {
-        'col': 'new_cases_per_million_7_day_avg_right',
-        'threshold': 1
+        'value_col': 'new_cases_per_million_7_day_avg_right',
+        'value_threshold': 1,
+        'positive_only': False
     },
     'days_since_0_1_new_deaths_per_million_7_day_avg_right': {
-        'col': 'new_deaths_per_million_7_day_avg_right',
-        'threshold': 0.1
+        'value_col': 'new_deaths_per_million_7_day_avg_right',
+        'value_threshold': 0.1,
+        'positive_only': False
     },
     'days_since_0_01_new_deaths_per_million_7_day_avg_right': {
-        'col': 'new_deaths_per_million_7_day_avg_right',
-        'threshold': 0.01
+        'value_col': 'new_deaths_per_million_7_day_avg_right',
+        'value_threshold': 0.01,
+        'positive_only': False
     },
 }
 
-def _get_date_of_nth(df, col, nth):
+def _get_date_of_threshold(df, col, threshold):
     try:
-        df_gt_nth = df[df[col] >= nth]
+        df_gt_nth = df[df[col] >= threshold]
         earliest = df.loc[pd.to_datetime(df_gt_nth['date']).idxmin()]
         return earliest['date']
     except:
         return None
 
-def _positive_date_diff(a, b):
+def _date_diff(a, b, positive_only=False):
     diff = (a - b).days
-    return diff if diff >= 0 else None
+    if positive_only and diff < 0:
+        return None
+    return diff
 
-def _inject_days_since(df, col, ref_date):
-    df[col] = df['date'].map(lambda date: _positive_date_diff(pd.to_datetime(date), pd.to_datetime(ref_date))).astype('Int64')
-    df = df
-    return df
-
-def _inject_days_since_group(df):
+def _inject_days_since(df, col, ref_date, positive_only):
     df = df.copy()
-    for col, spec in days_since_spec.items():
-        date = _get_date_of_nth(df, spec['col'], spec['threshold'])
-        if date is not None:
-            df = _inject_days_since(df, col, date)
+    df[col] = df['date'].map(lambda date: _date_diff(
+        pd.to_datetime(date), pd.to_datetime(ref_date), positive_only
+    )).astype('Int64')
     return df
 
-def inject_days_since_all(df):
+def _inject_days_since_by_location(df, col, spec):
+    date = _get_date_of_threshold(df, spec['value_col'], spec['value_threshold'])
+    if date is not None:
+        df = _inject_days_since(df, col, date, spec['positive_only'])
+    return df
+
+def _inject_days_since_from_spec(df, col, spec):
     return pd.concat([
-        _inject_days_since_group(df_group)
-        for loc, df_group in df.groupby('location')
+        _inject_days_since_by_location(df_location, col, spec)
+        for loc, df_location in df.groupby('location')
     ])
+
+def inject_days_since(df):
+    for col, spec in days_since_spec.items():
+        df = _inject_days_since_from_spec(df, col, spec)
+    return df
 
 def _apply_row_cfr_100(row):
     if pd.notnull(row['total_cases']) and row['total_cases'] >= 100:
@@ -260,7 +293,8 @@ def _apply_row_cfr_100(row):
 
 def inject_cfr(df):
     df = df.copy()
-    df['cfr'] = (df['total_deaths'] / df['total_cases']) * 100
+    cfr_series = (df['total_deaths'] / df['total_cases']) * 100
+    df['cfr'] = cfr_series.round(decimals=3)
     df['cfr_100_cases'] = df.apply(_apply_row_cfr_100, axis=1)
     return df
 
@@ -321,9 +355,68 @@ def inject_rolling_avg(df):
         df[col] = df[spec['col']].astype('float')
         df[col] = df.groupby('location', as_index=False)[col] \
             .rolling(window=spec['window'], min_periods=spec['min_periods'], center=spec['center']) \
-            .mean().round(decimals=10).reset_index(level=0, drop=True)
+            .mean().round(decimals=5).reset_index(level=0, drop=True)
     return df
 
+def inject_exemplars(df):
+    df = inject_population(df)
+
+    # Inject days since 100th case IF population ≥ 5M
+    def mapper_days_since(row):
+        if pd.notnull(row['population']) and row['population'] >= 5e6:
+            return row['days_since_100_total_cases']
+        return pd.NA
+    df['days_since_100_total_cases_and_5m_pop'] = df.apply(mapper_days_since, axis=1)
+
+    # Inject boolean when all exenplar conditions hold
+    # Use int because the Grapher doesn't handle non-ints very well
+    countries_with_testing_data = set(megafile.get_testing()['location'])
+    def mapper_bool(row):
+        if pd.notnull(row['days_since_100_total_cases']) and \
+            pd.notnull(row['population']) and \
+            row['days_since_100_total_cases'] >= 21 and \
+            row['population'] >= 5e6 and \
+            row['location'] in countries_with_testing_data:
+            return 1
+        return 0
+    df['5m_pop_and_21_days_since_100_cases_and_testing'] = df.apply(mapper_bool, axis=1)
+
+    return drop_population(df)
+
+growth_rates_spec = {
+    'doubling_days_total_cases_3_day_period': {
+        'value_col': 'total_cases',
+        'periods': 3
+    },
+    'doubling_days_total_cases_7_day_period': {
+        'value_col': 'total_cases',
+        'periods': 7
+    },
+    'doubling_days_total_deaths_3_day_period': {
+        'value_col': 'total_deaths',
+        'periods': 3
+    },
+    'doubling_days_total_deaths_7_day_period': {
+        'value_col': 'total_deaths',
+        'periods': 7
+    },
+}
+
+def pct_change_to_doubling_days(pct_change, periods):
+    if pd.notnull(pct_change) and pct_change != 0:
+        doubling_days = periods * np.log(2) / np.log(1 + pct_change)
+        return np.round(doubling_days, decimals=2)
+    return pd.NA
+
+def inject_growth_rates(df):
+    for col, spec in growth_rates_spec.items():
+        value_col = spec['value_col']
+        periods = spec['periods']
+        df[col] = df.replace({ value_col: 0 }, pd.NA) \
+            .groupby('location', as_index=False) \
+            [value_col].pct_change(periods=periods, fill_method=None) \
+            [value_col].map(lambda pct: pct_change_to_doubling_days(pct, periods))
+    return df
 
 # Export logic
 
@@ -387,6 +480,14 @@ GRAPHER_COL_NAMES = {
     # Case fatality ratio
     'cfr': 'Case fatality rate of COVID-19 (%)',
     'cfr_100_cases': 'Case fatality rate of COVID-19 (%) (Only observations with ≥100 cases)',
+    # Exemplars variables
+    'days_since_100_total_cases_and_5m_pop': 'Days since the total confirmed cases of COVID-19 reached 100 (with population ≥ 5M)',
+    '5m_pop_and_21_days_since_100_cases_and_testing': 'Has population ≥ 5M AND had ≥100 cases ≥21 days ago AND has testing data',
+    # Doubling days time-series
+    'doubling_days_total_cases_3_day_period': 'Doubling days of total confirmed cases (3 day period)',
+    'doubling_days_total_cases_7_day_period': 'Doubling days of total confirmed cases (7 day period)',
+    'doubling_days_total_deaths_3_day_period': 'Doubling days of total confirmed deaths (3 day period)',
+    'doubling_days_total_deaths_7_day_period': 'Doubling days of total confirmed deaths (7 day period)',
 }
 
 def existsin(l1, l2):

@@ -2,9 +2,9 @@
 
 Our complete COVID-19 dataset is a collection of the COVID-19 data maintained by [_Our World in Data_](https://ourworldindata.org/coronavirus). It is updated daily and includes data on confirmed cases, deaths, and testing.
 
-⬇️ [Download our complete COVID-19 dataset (CSV)](https://covid.ourworldindata.org/data/owid-covid-data.csv)
+🗂️ [Download our complete COVID-19 dataset (CSV)](https://covid.ourworldindata.org/data/owid-covid-data.csv)
 
-⬇️ [Download our complete COVID-19 dataset (XLSX)](https://covid.ourworldindata.org/data/owid-covid-data.xlsx)
+🗂️ [Download our complete COVID-19 dataset (XLSX)](https://covid.ourworldindata.org/data/owid-covid-data.xlsx)
 
 **We will continue to publish up-to-date data on confirmed cases, deaths, and testing, throughout the duration of the COVID-19 pandemic.**
 
@@ -41,6 +41,7 @@ If you are interested in the individual files that make up the complete dataset,
 - From 19 March 2020, we started relying on data published by the [European CDC](https://www.ecdc.europa.eu/en/publications-data/download-todays-data-geographic-distribution-covid-19-cases-worldwide). We wrote about [why we decided to switch sources](https://ourworldindata.org/covid-sources-comparison).
 - On 3 April 2020, we added country-level time series on COVID-19 tests.
 - On 16 April 2020, we made available a [complete dataset of all of our main variables](https://github.com/owid/covid-19-data/tree/master/public/data) related to confirmed cases, deaths, and tests.
+- On 25 April 2020, we added rows for "World" and "International" to our complete dataset. The `iso_code` column for these entries is blank.
 
 
 ## Data alterations
